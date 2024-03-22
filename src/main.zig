@@ -46,6 +46,8 @@ pub fn main() !void {
 }
 
 fn fetchReplays(allocator: Allocator, user_count: usize) !void {
+    try std.fs.cwd().makePath(REPLAY_DIR);
+
     var client = HttpClient{ .allocator = allocator };
     defer client.deinit();
 
@@ -122,9 +124,10 @@ fn getLeagueTop(allocator: Allocator, client: *HttpClient, n: usize) ![]UserData
     const endpoint = TETRIO_API ++ "users/lists/league";
 
     const req_id = try randomId();
-    var headers = std.http.Headers.init(allocator);
-    try headers.append("X-Session-ID", &req_id);
-    defer headers.deinit();
+    const x_session_header = std.http.Header{
+        .name = "X-Session-ID",
+        .value = &req_id,
+    };
 
     const result = try allocator.alloc(UserData, n);
     errdefer allocator.free(result);
@@ -145,17 +148,21 @@ fn getLeagueTop(allocator: Allocator, client: *HttpClient, n: usize) ![]UserData
         try url_builder.appendSlice("&limit=");
         try url_builder.writer().print("{}", .{limit});
 
-        var res = try client.fetch(allocator, .{
-            .method = .GET,
-            .headers = headers,
+        var res_body = std.ArrayList(u8).init(allocator);
+        defer res_body.deinit();
+
+        const res = try client.fetch(.{
+            .response_storage = .{ .dynamic = &res_body },
+            .max_append_size = 16 * 1024 * 1024,
             .location = .{ .url = url_builder.items },
+            .method = .GET,
+            .extra_headers = &.{x_session_header},
         });
-        defer res.deinit();
 
         const parsed = try json.parseFromSlice(
             TetrioResponse(struct { users: []UserData }),
             allocator,
-            res.body.?,
+            res_body.items,
             .{
                 .duplicate_field_behavior = .use_last,
                 .ignore_unknown_fields = true,
@@ -192,16 +199,20 @@ fn getUserReplays(allocator: Allocator, client: *HttpClient, user_id: MongoId) !
         // Rate limit to 1 request per second
         sleep(std.time.ns_per_s);
 
-        var res = try client.fetch(allocator, .{
-            .method = .GET,
+        var res_body = std.ArrayList(u8).init(allocator);
+        defer res_body.deinit();
+
+        const res = try client.fetch(.{
+            .response_storage = .{ .dynamic = &res_body },
+            .max_append_size = 2 * 1024 * 1024,
             .location = .{ .url = &endpoint },
+            .method = .GET,
         });
-        defer res.deinit();
 
         const parsed = try json.parseFromSlice(
             TetrioResponse(struct { records: []struct { replayid: MongoId } }),
             allocator,
-            res.body.?,
+            res_body.items,
             .{
                 .duplicate_field_behavior = .use_last,
                 .ignore_unknown_fields = true,
@@ -236,11 +247,15 @@ fn saveReplay(allocator: Allocator, client: *HttpClient, replay_id: MongoId, pat
         // Rate limit to 1 request per second
         sleep(1 * std.time.ns_per_s);
 
-        var res = try client.fetch(allocator, .{
-            .method = .GET,
+        var res_body = std.ArrayList(u8).init(allocator);
+        defer res_body.deinit();
+
+        const res = try client.fetch(.{
+            .response_storage = .{ .dynamic = &res_body },
+            .max_append_size = 1024 * 1024 * 1024,
             .location = .{ .url = &endpoint },
+            .method = .GET,
         });
-        defer res.deinit();
 
         if (res.status != .ok) {
             std.debug.print("Failed to get replay. Status code: {}\n", .{res.status});
@@ -251,22 +266,19 @@ fn saveReplay(allocator: Allocator, client: *HttpClient, replay_id: MongoId, pat
             continue;
         }
 
-        const res_body = try allocator.dupe(u8, res.body.?);
-        defer allocator.free(res_body);
-
         // Inoue api returns empty array instead of empty object
         const original = "\"data\":[]";
         const replacement = "\"data\":{}";
-        for (0..res_body.len - original.len + 1) |i| {
-            if (std.mem.eql(u8, res_body[i .. i + original.len], original)) {
-                @memcpy(res_body[i .. i + replacement.len], replacement);
+        for (0..res_body.items.len - original.len + 1) |i| {
+            if (std.mem.eql(u8, res_body.items[i .. i + original.len], original)) {
+                @memcpy(res_body.items[i .. i + replacement.len], replacement);
             }
         }
 
         var file = try std.fs.cwd().createFile(path, .{});
         defer file.close();
 
-        try file.writeAll(res_body);
+        try file.writeAll(res_body.items);
         break;
     }
 }

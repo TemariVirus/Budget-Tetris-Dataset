@@ -3,12 +3,15 @@
     .version = "0.0.0",
     .dependencies = .{
         .engine = .{
-            .path = "../game",
+            .url = "https://github.com/TemariVirus/Budget-Tetris-Engine/archive/913d9bebe4b09885b65f98fa2db72a0b33e7807f.tar.gz",
+            .hash = "12201a83b608c6cbd4736627ba867d32523d66292d4493fdfd8e5eadfbfb555d721d",
         },
     },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
+        "LICENSE",
+        "README.md",
     },
 }

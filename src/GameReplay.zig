@@ -284,7 +284,6 @@ pub fn init(
             "",
             Bag.init(options.seed),
             .{ .left = 0, .top = 0, .width = 0, .height = 0 },
-            &.{},
             settings,
         ),
         .arr = @intFromFloat(@round(options.handling.arr * 10)),
@@ -386,7 +385,7 @@ fn nextSubframes(self: *Self, subframe: u32) !void {
     if (self.softdropping) {
         self.player.softDrop();
     }
-    self.player.tick(now - self.player.time);
+    self.player.tick(now - self.player.time, 0, &.{});
 }
 
 fn gameTime(subframe: u32) u64 {
@@ -515,7 +514,7 @@ fn place(self: *Self, subframe: u32) !void {
     const clear_info = state_copy.lockCurrent(self.player.last_kick);
     try self.addRow(clear_info, subframe);
 
-    self.player.hardDrop();
+    self.player.hardDrop(0, &.{});
     self.adjustSpawn();
     self.applyDCD(subframe, true);
 

@@ -198,10 +198,13 @@ fn replayMatch(
 ) !void {
     var settings = engine.GameSettings{
         .g = getGravity(0),
+        .soft_g = 400 * 60,
         .autolock_grace = LOCKRESETS + 1,
         .lock_delay = (LOCKTIME * 1000 / FRAMERATE) + 1,
         .show_next_count = 5, // Fixed for Tetra League
         .display_stats = .{ .pps, .apm, .sent },
+        .target_mode = .none,
+        .use_lockout = false,
     };
     stats.game_id += 2;
 
